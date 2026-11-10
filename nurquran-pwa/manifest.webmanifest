@@ -1,0 +1,13 @@
+{
+  "name": "NurQuran — Teman Ibadah Harian",
+  "short_name": "NurQuran",
+  "description": "Al-Qur'an digital, jadwal salat, tasbih, dan fitur ibadah.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101713",
+  "theme_color": "#101713",
+  "lang": "id",
+  "icons": [
+    {"src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}
