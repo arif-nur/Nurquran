@@ -7,7 +7,7 @@ Aplikasi web Al-Qur'an bernuansa dark-elegant yang dapat dipasang sebagai PWA.
 - Audio tilawah per ayat (riwayat audio Alafasy).
 - Jadwal salat harian dari koordinat lokasi perangkat melalui Aladhan API.
 - Tasbih digital dengan target yang dapat diubah dan penyimpanan lokal.
-- Latihan tebak surah dari terjemahan ayat, dengan skor sesi dan skor terbaik.
+- Latihan tebak surah dari kumpulan ayat pilihan yang tersedia offline, dengan skor sesi dan skor terbaik.
 - Rekam bacaan untuk murajaah, putar kembali, dan unduh audio langsung di perangkat.
 - Simpan ayat favorit, riwayat bacaan sederhana, salin teks ayat.
 - Kalkulasi azimut kiblat dari koordinat.

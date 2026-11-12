@@ -13,6 +13,23 @@ const dhikrChoices = [
   ["اللَّهُ أَكْبَرُ", "Allahu Akbar"],
   ["أَسْتَغْفِرُ اللَّهَ", "Astaghfirullah"]
 ];
+const offlineQuizQuestions = [
+  { number: 1, englishName: "Al-Fatihah", englishNameTranslation: "The Opening", name: "الفَاتِحَة", ayahNumber: 2, arabic: "الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ", translation: "Segala puji bagi Allah, Tuhan seluruh alam." },
+  { number: 93, englishName: "Ad-Duha", englishNameTranslation: "The Morning Hours", name: "الضُّحَىٰ", ayahNumber: 1, arabic: "وَالضُّحَىٰ", translation: "Demi waktu duha (ketika matahari naik sepenggalah)." },
+  { number: 94, englishName: "Ash-Sharh", englishNameTranslation: "The Relief", name: "الشَّرْح", ayahNumber: 5, arabic: "فَإِنَّ مَعَ الْعُسْرِ يُسْرًا", translation: "Maka sesungguhnya beserta kesulitan ada kemudahan." },
+  { number: 97, englishName: "Al-Qadr", englishNameTranslation: "The Power", name: "الْقَدْر", ayahNumber: 1, arabic: "إِنَّا أَنْزَلْنَاهُ فِي لَيْلَةِ الْقَدْرِ", translation: "Sesungguhnya Kami telah menurunkannya (Al-Qur’an) pada malam qadar." },
+  { number: 103, englishName: "Al-Asr", englishNameTranslation: "The Declining Day", name: "الْعَصْر", ayahNumber: 1, arabic: "وَالْعَصْرِ", translation: "Demi masa." },
+  { number: 105, englishName: "Al-Fil", englishNameTranslation: "The Elephant", name: "الْفِيل", ayahNumber: 1, arabic: "أَلَمْ تَرَ كَيْفَ فَعَلَ رَبُّكَ بِأَصْحَابِ الْفِيلِ", translation: "Tidakkah engkau (Muhammad) memperhatikan bagaimana Tuhanmu telah bertindak terhadap pasukan bergajah?" },
+  { number: 107, englishName: "Al-Ma'un", englishNameTranslation: "Small Kindnesses", name: "الْمَاعُون", ayahNumber: 1, arabic: "أَرَأَيْتَ الَّذِي يُكَذِّبُ بِالدِّينِ", translation: "Tahukah kamu (orang) yang mendustakan agama?" },
+  { number: 108, englishName: "Al-Kawthar", englishNameTranslation: "The Abundance", name: "الْكَوْثَر", ayahNumber: 1, arabic: "إِنَّا أَعْطَيْنَاكَ الْكَوْثَرَ", translation: "Sungguh, Kami telah memberimu (Muhammad) nikmat yang banyak." },
+  { number: 109, englishName: "Al-Kafirun", englishNameTranslation: "The Disbelievers", name: "الْكَافِرُون", ayahNumber: 1, arabic: "قُلْ يَا أَيُّهَا الْكَافِرُونَ", translation: "Katakanlah (Muhammad), “Wahai orang-orang kafir!" },
+  { number: 112, englishName: "Al-Ikhlas", englishNameTranslation: "The Sincerity", name: "الْإِخْلَاص", ayahNumber: 1, arabic: "قُلْ هُوَ اللَّهُ أَحَدٌ", translation: "Katakanlah (Muhammad), “Dialah Allah, Yang Maha Esa.”" },
+  { number: 113, englishName: "Al-Falaq", englishNameTranslation: "The Daybreak", name: "الْفَلَق", ayahNumber: 1, arabic: "قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ", translation: "Katakanlah, “Aku berlindung kepada Tuhan yang menguasai subuh (fajar)." },
+  { number: 114, englishName: "An-Nas", englishNameTranslation: "Mankind", name: "النَّاس", ayahNumber: 1, arabic: "قُلْ أَعُوذُ بِرَبِّ النَّاسِ", translation: "Katakanlah, “Aku berlindung kepada Tuhannya manusia." }
+].map(({ number, englishName, englishNameTranslation, name, ...ayah }) => ({
+  ...ayah,
+  surah: { number, englishName, englishNameTranslation, name }
+}));
 const quizBestKey = "nq-quiz-best";
 const state = {
   user: null, surahs: [], currentSurah: null, currentAudio: null, audio: new Audio(),
@@ -31,8 +48,7 @@ const state = {
     answered: false,
     selected: null,
     loading: false,
-    error: "",
-    requestId: 0
+    error: ""
   },
   recording: {
     recorder: null,
@@ -136,7 +152,7 @@ function practiceView(){
   ? `<div class="quiz-choices">${quiz.choices.map(surah=>`<button class="quiz-choice${quiz.answered&&surah.number===question.surah.number?" correct":""}${quiz.answered&&surah.number===quiz.selected&&surah.number!==question.surah.number?" incorrect":""}" data-quiz-answer="${surah.number}" ${quiz.answered?"disabled":""}><span>${esc(surah.englishNameTranslation)}</span><b>${esc(surah.englishName)}</b><small>${esc(surah.name)}</small></button>`).join("")}</div>`
   : "";
  const recordingExtension=recording.urlMime.includes("mp4")?"mp4":recording.urlMime.includes("ogg")?"ogg":"webm";
- return `<div class="section-head practice-heading"><div><span class="eyebrow">BELAJAR SAMBIL MURAJAAH</span><h3>Latihan Al-Qur’an</h3></div></div><div class="practice-grid"><section class="panel quiz-panel"><div class="practice-card-heading"><div><span class="eyebrow">TEBAK NAMA SURAH</span><h3>Ayat ini dari surah apa?</h3></div><span class="practice-icon">۞</span></div><p class="muted">Baca terjemahannya, lalu pilih nama surah yang tepat.</p><div class="quiz-score"><span>Skor sesi <b>${quiz.score}</b></span><span>Skor terbaik <b>${quiz.best}</b></span></div>${quiz.loading?`<div class="loading" role="status">Menyiapkan ayat…</div>`:quiz.error?`<div class="empty-state" role="alert">${esc(quiz.error)}</div><button class="primary-btn" id="nextQuiz">Coba lagi →</button>`:question?`${feedback}${choices}<button class="primary-btn" id="nextQuiz">${quiz.answered?"Ayat berikutnya →":"Lewati ayat →"}</button>`:`<button class="primary-btn" id="nextQuiz">Mulai tebak ayat →</button>`}</section><section class="panel recorder-panel"><div class="practice-card-heading"><div><span class="eyebrow">MURAJAAH MANDIRI</span><h3>Rekam bacaanmu</h3></div><span class="practice-icon">◉</span></div><p class="muted">Latih bacaan, dengarkan kembali, lalu simpan rekaman jika ingin.</p><div class="recording-clock" id="recordingTime">${formatRecordingTime(recording.seconds)}</div><p class="recording-status" id="recordingStatus" role="status">${esc(recording.status)}</p><div class="recording-controls">${recording.recorder?.state==="recording"?`<button class="record-btn is-recording" id="stopRecording"><span>■</span> Hentikan rekaman</button>`:`<button class="record-btn" id="startRecording"><span>●</span> Mulai rekam</button>`}</div>${recording.url?`<div class="recording-playback"><audio controls preload="metadata" src="${recording.url}">Browser tidak mendukung pemutar audio.</audio><a class="outline-btn" href="${recording.url}" download="murajaah-${new Date().toISOString().slice(0,10)}.${recordingExtension}">Unduh rekaman</a></div>`:""}<p class="note">Mikrofon hanya aktif setelah Anda menekan tombol rekam dan menyetujui izin browser. Audio tidak dikirim atau diunggah; rekaman hanya tersedia selama halaman ini terbuka.</p></section></div>`;
+ return `<div class="section-head practice-heading"><div><span class="eyebrow">BELAJAR SAMBIL MURAJAAH</span><h3>Latihan Al-Qur’an</h3></div></div><div class="practice-grid"><section class="panel quiz-panel"><div class="practice-card-heading"><div><span class="eyebrow">TEBAK NAMA SURAH</span><h3>Ayat ini dari surah apa?</h3></div><span class="practice-icon">۞</span></div><p class="muted">Baca terjemahannya, lalu pilih nama surah yang tepat. Kuis bisa dimainkan tanpa internet.</p><div class="quiz-score"><span>Skor sesi <b>${quiz.score}</b></span><span>Skor terbaik <b>${quiz.best}</b></span></div>${question?`${feedback}${choices}<button class="primary-btn" id="nextQuiz">${quiz.answered?"Ayat berikutnya →":"Lewati ayat →"}</button>`:`<button class="primary-btn" id="nextQuiz">Mulai tebak ayat →</button>`}</section><section class="panel recorder-panel"><div class="practice-card-heading"><div><span class="eyebrow">MURAJAAH MANDIRI</span><h3>Rekam bacaanmu</h3></div><span class="practice-icon">◉</span></div><p class="muted">Latih bacaan, dengarkan kembali, lalu simpan rekaman jika ingin.</p><div class="recording-clock" id="recordingTime">${formatRecordingTime(recording.seconds)}</div><p class="recording-status" id="recordingStatus" role="status">${esc(recording.status)}</p><div class="recording-controls">${recording.recorder?.state==="recording"?`<button class="record-btn is-recording" id="stopRecording"><span>■</span> Hentikan rekaman</button>`:`<button class="record-btn" id="startRecording"><span>●</span> Mulai rekam</button>`}</div>${recording.url?`<div class="recording-playback"><audio controls preload="metadata" src="${recording.url}">Browser tidak mendukung pemutar audio.</audio><a class="outline-btn" href="${recording.url}" download="murajaah-${new Date().toISOString().slice(0,10)}.${recordingExtension}">Unduh rekaman</a></div>`:""}<p class="note">Mikrofon hanya aktif setelah Anda menekan tombol rekam dan menyetujui izin browser. Audio tidak dikirim atau diunggah; rekaman hanya tersedia selama halaman ini terbuka.</p></section></div>`;
 }
 function formatRecordingTime(seconds){
  return `${String(Math.floor(seconds/60)).padStart(2,"0")}:${String(seconds%60).padStart(2,"0")}`;
@@ -172,65 +188,22 @@ function bindView(){
  $$("[data-play]").forEach(b=>b.onclick=()=>playAudio(decodeURIComponent(b.dataset.play)));
  $$("[data-copy]").forEach(b=>b.onclick=()=>navigator.clipboard?.writeText(decodeURIComponent(b.dataset.copy)));
 }
-async function ensureSurahsLoaded(){
- if(state.surahs.length)return state.surahs;
- if(!state.surahsLoading){
-  state.surahsLoading=(async()=>{
-   const result=await fetchJson("https://api.alquran.cloud/v1/surah");
-   if(!Array.isArray(result.data)||result.data.length!==114)throw Error("Daftar surah tidak lengkap.");
-   state.surahs=result.data;
-   return state.surahs;
-  })().finally(()=>{state.surahsLoading=null;});
- }
- return state.surahsLoading;
-}
-async function loadQuizQuestion(){
+function loadQuizQuestion(){
  const quiz=state.quiz;
- const requestId=++quiz.requestId;
- quiz.loading=true;quiz.error="";quiz.question=null;quiz.choices=[];quiz.answered=false;quiz.selected=null;
+ const previousQuestion=quiz.question;
+ const candidates=offlineQuizQuestions.filter(item=>item.surah.number!==previousQuestion?.surah.number||item.ayahNumber!==previousQuestion?.ayahNumber);
+ const question=candidates[Math.floor(Math.random()*candidates.length)];
+ const distractors=offlineQuizQuestions
+  .filter(item=>item.surah.number!==question.surah.number)
+  .map(item=>item.surah)
+  .sort(()=>Math.random()-.5)
+  .slice(0,3);
+ quiz.question=question;
+ quiz.choices=[question.surah,...distractors].sort(()=>Math.random()-.5);
+ quiz.answered=false;
+ quiz.selected=null;
+ quiz.error="";
  if(state.activeTab==="practice")renderView();
- try{
-  const surahs=await ensureSurahsLoaded();
-  if(requestId!==quiz.requestId)return;
-  const totalAyahs=surahs.reduce((total,surah)=>total+surah.numberOfAyahs,0);
-  const ayahNumber=Math.floor(Math.random()*totalAyahs)+1;
-  const result=await fetchJson(`https://api.alquran.cloud/v1/ayah/${ayahNumber}/editions/quran-uthmani,id.indonesian`);
-  if(requestId!==quiz.requestId)return;
-  const arabic=result.data?.find(item=>item.edition?.identifier==="quran-uthmani");
-  const translation=result.data?.find(item=>item.edition?.identifier==="id.indonesian");
-  const surah=arabic?.surah;
-  if(!arabic?.text||!translation?.text||!surah?.number)throw Error("Data ayat tidak lengkap.");
-  const distractors=surahs.filter(item=>item.number!==surah.number).sort(()=>Math.random()-.5).slice(0,3);
-  quiz.question={arabic:arabic.text,translation:translation.text,ayahNumber:arabic.numberInSurah,surah};
-  quiz.choices=[surahs.find(item=>item.number===surah.number),...distractors].sort(()=>Math.random()-.5);
- }catch(error){
-  if(requestId!==quiz.requestId)return;
-  console.error("Gagal memuat soal tebak ayat:",error);
-  quiz.error=error.name==="AbortError"||error.message.includes("Waktu tunggu")
-   ?"Layanan ayat terlalu lama merespons. Periksa koneksi lalu coba lagi."
-   :"Soal belum bisa dimuat. Periksa koneksi internet, lalu coba lagi.";
- }finally{
-  if(requestId===quiz.requestId){
-   quiz.loading=false;
-   if(state.activeTab==="practice")renderView();
-  }
- }
-}
-async function fetchJson(url){
- const controller=new AbortController();
- const timeout=setTimeout(()=>controller.abort(),12000);
- try{
-  const response=await fetch(url,{signal:controller.signal});
-  if(!response.ok)throw Error(`Layanan ayat merespons dengan kode ${response.status}.`);
-  const result=await response.json();
-  if(result.code&&result.code!==200)throw Error(result.status||"Layanan ayat gagal memproses permintaan.");
-  return result;
- }catch(error){
-  if(error.name==="AbortError")throw Error("Waktu tunggu layanan ayat habis.");
-  throw error;
- }finally{
-  clearTimeout(timeout);
- }
 }
 function answerQuiz(surahNumber){
  const quiz=state.quiz;
