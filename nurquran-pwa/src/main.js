@@ -31,7 +31,8 @@ const state = {
     answered: false,
     selected: null,
     loading: false,
-    error: ""
+    error: "",
+    requestId: 0
   },
   recording: {
     recorder: null,
@@ -175,9 +176,7 @@ async function ensureSurahsLoaded(){
  if(state.surahs.length)return state.surahs;
  if(!state.surahsLoading){
   state.surahsLoading=(async()=>{
-   const response=await fetch("https://api.alquran.cloud/v1/surah");
-   if(!response.ok)throw Error(`Gagal mengambil daftar surah (${response.status})`);
-   const result=await response.json();
+   const result=await fetchJson("https://api.alquran.cloud/v1/surah");
    if(!Array.isArray(result.data)||result.data.length!==114)throw Error("Daftar surah tidak lengkap.");
    state.surahs=result.data;
    return state.surahs;
@@ -187,15 +186,16 @@ async function ensureSurahsLoaded(){
 }
 async function loadQuizQuestion(){
  const quiz=state.quiz;
+ const requestId=++quiz.requestId;
  quiz.loading=true;quiz.error="";quiz.question=null;quiz.choices=[];quiz.answered=false;quiz.selected=null;
  if(state.activeTab==="practice")renderView();
  try{
   const surahs=await ensureSurahsLoaded();
+  if(requestId!==quiz.requestId)return;
   const totalAyahs=surahs.reduce((total,surah)=>total+surah.numberOfAyahs,0);
   const ayahNumber=Math.floor(Math.random()*totalAyahs)+1;
-  const response=await fetch(`https://api.alquran.cloud/v1/ayah/${ayahNumber}/editions/quran-uthmani,id.indonesian`);
-  if(!response.ok)throw Error(`Gagal mengambil ayat (${response.status})`);
-  const result=await response.json();
+  const result=await fetchJson(`https://api.alquran.cloud/v1/ayah/${ayahNumber}/editions/quran-uthmani,id.indonesian`);
+  if(requestId!==quiz.requestId)return;
   const arabic=result.data?.find(item=>item.edition?.identifier==="quran-uthmani");
   const translation=result.data?.find(item=>item.edition?.identifier==="id.indonesian");
   const surah=arabic?.surah;
@@ -204,11 +204,32 @@ async function loadQuizQuestion(){
   quiz.question={arabic:arabic.text,translation:translation.text,ayahNumber:arabic.numberInSurah,surah};
   quiz.choices=[surahs.find(item=>item.number===surah.number),...distractors].sort(()=>Math.random()-.5);
  }catch(error){
+  if(requestId!==quiz.requestId)return;
   console.error("Gagal memuat soal tebak ayat:",error);
-  quiz.error="Soal belum bisa dimuat. Periksa koneksi internet, lalu coba lagi.";
+  quiz.error=error.name==="AbortError"||error.message.includes("Waktu tunggu")
+   ?"Layanan ayat terlalu lama merespons. Periksa koneksi lalu coba lagi."
+   :"Soal belum bisa dimuat. Periksa koneksi internet, lalu coba lagi.";
  }finally{
-  quiz.loading=false;
-  if(state.activeTab==="practice")renderView();
+  if(requestId===quiz.requestId){
+   quiz.loading=false;
+   if(state.activeTab==="practice")renderView();
+  }
+ }
+}
+async function fetchJson(url){
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),12000);
+ try{
+  const response=await fetch(url,{signal:controller.signal});
+  if(!response.ok)throw Error(`Layanan ayat merespons dengan kode ${response.status}.`);
+  const result=await response.json();
+  if(result.code&&result.code!==200)throw Error(result.status||"Layanan ayat gagal memproses permintaan.");
+  return result;
+ }catch(error){
+  if(error.name==="AbortError")throw Error("Waktu tunggu layanan ayat habis.");
+  throw error;
+ }finally{
+  clearTimeout(timeout);
  }
 }
 function answerQuiz(surahNumber){
