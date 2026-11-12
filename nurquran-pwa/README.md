@@ -7,6 +7,8 @@ Aplikasi web Al-Qur'an bernuansa dark-elegant yang dapat dipasang sebagai PWA.
 - Audio tilawah per ayat (riwayat audio Alafasy).
 - Jadwal salat harian dari koordinat lokasi perangkat melalui Aladhan API.
 - Tasbih digital dengan target yang dapat diubah dan penyimpanan lokal.
+- Latihan tebak surah dari terjemahan ayat, dengan skor sesi dan skor terbaik.
+- Rekam bacaan untuk murajaah, putar kembali, dan unduh audio langsung di perangkat.
 - Simpan ayat favorit, riwayat bacaan sederhana, salin teks ayat.
 - Kalkulasi azimut kiblat dari koordinat.
 - Login/daftar Firebase Email & Password dan Google.
@@ -60,6 +62,8 @@ git push -u origin main
 - Service worker menyimpan kerangka aplikasi, bukan seluruh 114 surah/audio. Jadi jangan menganggap seluruh konten Al-Qur'an sudah tersedia offline.
 - Lokasi tidak diminta sampai pengguna membuka aplikasi dan browser meminta izin.
 - Login Firebase pada versi ini menyediakan autentikasi, tetapi bookmark/tasbih masih tersimpan lokal di perangkat, belum disinkronkan ke cloud.
+- Rekaman murajaah tidak diunggah; audio hanya disimpan sementara di memori halaman dan perlu diunduh sebelum halaman ditutup jika ingin menyimpannya.
+- Perekam suara memerlukan izin mikrofon dan browser modern pada HTTPS atau localhost.
 - Fitur arah kiblat menghitung azimut dari utara. Penunjuk visual tidak menggantikan kompas fisik; sensor kompas belum diintegrasikan lintas perangkat.
 - Notifikasi azan belum diaktifkan. Browser/PWA tidak dapat menjamin alarm berjalan tepat waktu saat aplikasi ditutup tanpa backend/push notification dan izin pengguna.
 

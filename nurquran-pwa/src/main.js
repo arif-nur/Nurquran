@@ -1,4 +1,5 @@
 import "./style.css";
+import "./responsive.css";
 import {
   auth, configured, googleProvider, signInWithPopup, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signOut, onAuthStateChanged
@@ -6,14 +7,43 @@ import {
 
 const $ = (s, el=document) => el.querySelector(s);
 const app = $("#app");
+const dhikrChoices = [
+  ["سُبْحَانَ اللَّهِ", "Subhanallah"],
+  ["الْحَمْدُ لِلَّهِ", "Alhamdulillah"],
+  ["اللَّهُ أَكْبَرُ", "Allahu Akbar"],
+  ["أَسْتَغْفِرُ اللَّهَ", "Astaghfirullah"]
+];
+const quizBestKey = "nq-quiz-best";
 const state = {
   user: null, surahs: [], currentSurah: null, currentAudio: null, audio: new Audio(),
   prayer: null, locationName: "Lokasi belum dipilih", coords: null,
   tasbih: Number(localStorage.getItem("nq-tasbih") || 0),
   target: Number(localStorage.getItem("nq-target") || 33),
+  dhikr: localStorage.getItem("nq-dhikr") || "Subhanallah",
   bookmarks: JSON.parse(localStorage.getItem("nq-bookmarks") || "[]"),
   history: JSON.parse(localStorage.getItem("nq-history") || "[]"),
   settings: JSON.parse(localStorage.getItem("nq-settings") || '{"translation":true,"arabicSize":32}'),
+  quiz: {
+    question: null,
+    choices: [],
+    score: 0,
+    best: Number(localStorage.getItem(quizBestKey) || 0),
+    answered: false,
+    selected: null,
+    loading: false,
+    error: ""
+  },
+  recording: {
+    recorder: null,
+    stream: null,
+    chunks: [],
+    url: null,
+    urlMime: "",
+    seconds: 0,
+    timer: null,
+    status: "Rekaman hanya disimpan sementara di perangkat ini."
+  },
+  surahsLoading: null,
   activeTab: "home"
 };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -31,6 +61,7 @@ function shell() {
         <button data-tab="quran" class="nav-item"><i>۞</i> Al-Qur'an</button>
         <button data-tab="prayer" class="nav-item"><i>◷</i> Jadwal Salat</button>
         <button data-tab="tasbih" class="nav-item"><i>◎</i> Tasbih Digital</button>
+        <button data-tab="practice" class="nav-item"><i>♫</i> Latihan & Rekam</button>
         <button data-tab="bookmark" class="nav-item"><i>♡</i> Ayat Tersimpan</button>
         <button data-tab="qibla" class="nav-item"><i>⌖</i> Arah Kiblat</button>
       </nav>
@@ -45,7 +76,7 @@ function shell() {
       <footer>NurQuran <span>•</span> Semoga setiap ayat menjadi cahaya dalam langkahmu.</footer>
     </main>
     <nav class="mobile-nav">
-      <button data-tab="home">⌂<small>Home</small></button><button data-tab="quran">۞<small>Qur'an</small></button><button data-tab="prayer">◷<small>Salat</small></button><button data-tab="tasbih">◎<small>Tasbih</small></button><button data-tab="bookmark">♡<small>Simpan</small></button>
+      <button data-tab="home" class="active">⌂<small>Home</small></button><button data-tab="quran">۞<small>Qur'an</small></button><button data-tab="prayer">◷<small>Salat</small></button><button data-tab="tasbih">◎<small>Tasbih</small></button><button data-tab="practice">♫<small>Latihan</small></button><button data-tab="bookmark">♡<small>Simpan</small></button><button data-tab="qibla">⌖<small>Kiblat</small></button>
     </nav>
   </div>`;
   $$("[data-tab]").forEach(b => b.addEventListener("click", e => { e.preventDefault(); navigate(b.dataset.tab); }));
@@ -55,10 +86,11 @@ function shell() {
 }
 const $$ = (s, el=document) => [...el.querySelectorAll(s)];
 function navigate(tab) {
+  if(state.recording.recorder?.state==="recording"&&tab!=="practice")stopRecording("Rekaman dihentikan saat berpindah menu.");
   state.activeTab=tab;
-  $$(".nav-item").forEach(x=>x.classList.toggle("active",x.dataset.tab===tab));
+  $$(".nav-item, .mobile-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===tab));
   renderView();
-  $("#pageTitle").textContent = ({home:"Assalamu’alaikum",quran:"Al-Qur’an",prayer:"Jadwal Salat",tasbih:"Tasbih Digital",bookmark:"Ayat Tersimpan",qibla:"Arah Kiblat"})[tab];
+  $("#pageTitle").textContent = ({home:"Assalamu’alaikum",quran:"Al-Qur’an",prayer:"Jadwal Salat",tasbih:"Tasbih Digital",practice:"Latihan & Rekam",bookmark:"Ayat Tersimpan",qibla:"Arah Kiblat"})[tab];
 }
 function renderView() {
   const v=$("#view"); if(!v) return;
@@ -66,20 +98,20 @@ function renderView() {
   if(state.activeTab==="quran") v.innerHTML=quranView();
   if(state.activeTab==="prayer") v.innerHTML=prayerView();
   if(state.activeTab==="tasbih") v.innerHTML=tasbihView();
+  if(state.activeTab==="practice") v.innerHTML=practiceView();
   if(state.activeTab==="bookmark") v.innerHTML=bookmarkView();
   if(state.activeTab==="qibla") v.innerHTML=qiblaView();
   bindView();
 }
 function homeView() {
   const p=state.prayer;
-  const next=nextPrayer();
   const last=state.history[0];
   return `<div class="welcome-row"><div><p class="muted">Selamat datang di ruang ibadahmu</p><h2>Tenangkan hati,<br><em>dekatkan diri pada-Nya.</em></h2><p class="muted">Mulai hari dengan membaca ayat suci Al-Qur’an.</p><button class="primary-btn" data-go="quran">Baca Al-Qur’an <span>→</span></button></div><div class="hero-art"><div class="moon"></div><div class="mosque">☾</div><span>نور</span></div></div>
   <div class="section-head"><div><span class="eyebrow">WAKTU IBADAH</span><h3>Jadwal salat hari ini</h3></div><button class="text-btn" data-go="prayer">Lihat semua →</button></div>
   <div class="prayer-strip">${prayerMini("Subuh",p?.Fajr)}${prayerMini("Zuhur",p?.Dhuhr)}${prayerMini("Asar",p?.Asr)}${prayerMini("Magrib",p?.Maghrib)}${prayerMini("Isya",p?.Isha)}</div>
   <div class="grid-two"><div class="panel continue"><span class="eyebrow">LANJUTKAN BACAAN</span><h3>${last ? esc(last.surahName) : "Mulai tilawah hari ini"}</h3><p class="muted">${last ? `Terakhir dibaca ayat ${last.ayah}` : "Temukan ketenangan melalui ayat-ayat Al-Qur’an."}</p><button class="outline-btn" data-go="quran">${last?"Lanjutkan":"Jelajahi surah"} →</button></div><div class="panel daily"><span class="eyebrow">DZIKIR HARIAN</span><div class="daily-count">${state.tasbih}</div><p class="muted">Hitungan tasbih tersimpan</p><button class="outline-btn" data-go="tasbih">Buka tasbih →</button></div></div>
   <div class="section-head"><div><span class="eyebrow">MULAI DARI SINI</span><h3>Fitur NurQuran</h3></div></div>
-  <div class="feature-grid"><button class="feature-card" data-go="quran"><span>۞</span><b>Al-Qur’an 30 Juz</b><small>114 surah dan terjemahan</small></button><button class="feature-card" data-go="prayer"><span>◷</span><b>Jadwal Salat</b><small>Menyesuaikan lokasi</small></button><button class="feature-card" data-go="tasbih"><span>◎</span><b>Tasbih Digital</b><small>Hitung dzikir harian</small></button><button class="feature-card" data-go="qibla"><span>⌖</span><b>Arah Kiblat</b><small>Kompas berbasis lokasi</small></button></div>`;
+  <div class="feature-grid"><button class="feature-card" data-go="quran"><span>۞</span><b>Al-Qur’an 30 Juz</b><small>114 surah dan terjemahan</small></button><button class="feature-card" data-go="prayer"><span>◷</span><b>Jadwal Salat</b><small>Menyesuaikan lokasi</small></button><button class="feature-card" data-go="tasbih"><span>◎</span><b>Tasbih Digital</b><small>Hitung dzikir harian</small></button><button class="feature-card" data-go="practice"><span>♫</span><b>Latihan & Rekam</b><small>Tebak ayat, rekam murajaah</small></button><button class="feature-card" data-go="qibla"><span>⌖</span><b>Arah Kiblat</b><small>Kompas berbasis lokasi</small></button></div>`;
 }
 function prayerMini(name,time){return `<div class="prayer-mini"><small>${name}</small><b>${fmtTime(time)}</b></div>`}
 function quranView() {
@@ -90,7 +122,23 @@ function prayerView(){
  return `<div class="prayer-banner"><div><span class="eyebrow">JADWAL HARI INI</span><h2>${esc(state.locationName)}</h2><p>${fmtDate(new Date())}</p><button class="primary-btn" id="refreshLocation">Perbarui lokasi ⌖</button></div><div class="next-box"><small>WAKTU SALAT BERIKUTNYA</small><strong>${nextPrayer().name}</strong><b>${fmtTime(nextPrayer().time)}</b></div></div><div class="prayer-table">${[["Imsak",p?.Imsak],["Subuh",p?.Fajr],["Terbit",p?.Sunrise],["Zuhur",p?.Dhuhr],["Asar",p?.Asr],["Magrib",p?.Maghrib],["Isya",p?.Isha]].map(([n,t])=>`<div class="prayer-line"><span>${n}</span><b>${fmtTime(t)}</b></div>`).join("")}</div><p class="note">Jadwal dihitung berdasarkan koordinat perangkat melalui layanan Aladhan. Waktu dapat berbeda beberapa menit dari jadwal masjid setempat; sesuaikan metode/perhitungan jika diperlukan.</p>`;
 }
 function tasbihView(){
- return `<div class="tasbih-layout"><div class="panel tasbih-panel"><span class="eyebrow">HITUNGAN DZIKIR</span><div class="tasbih-count" id="tasbihCount">${state.tasbih}</div><div class="progress-track"><div id="tasbihProgress" style="width:${Math.min(100,state.tasbih/state.target*100)}%"></div></div><p class="muted">Target: ${state.target} hitungan</p><button class="tasbih-button" id="countBtn" aria-label="Tambah hitungan">تَسْبِيح<br><small>KETUK UNTUK BERDZIKIR</small></button><div class="tasbih-actions"><button class="outline-btn" id="resetTasbih">↺ Reset</button><button class="outline-btn" id="targetBtn">Target: ${state.target}</button></div></div><div class="panel dhikr-list"><span class="eyebrow">PILIHAN DZIKIR</span><h3>Dzikir sederhana</h3>${[["سُبْحَانَ اللَّهِ","Subhanallah"],["الْحَمْدُ لِلَّهِ","Alhamdulillah"],["اللَّهُ أَكْبَرُ","Allahu Akbar"],["أَسْتَغْفِرُ اللَّهَ","Astaghfirullah"]].map(([a,b])=>`<button class="dhikr-choice" data-dhikr="${b}"><b>${a}</b><small>${b}</small></button>`).join("")}<p class="note">Hitungan tersimpan otomatis di perangkat ini.</p></div></div>`;
+ const selected=dhikrChoices.find(([,name])=>name===state.dhikr)||dhikrChoices[0];
+ return `<div class="tasbih-layout"><div class="panel tasbih-panel"><span class="eyebrow">HITUNGAN DZIKIR</span><div class="tasbih-count" id="tasbihCount" aria-live="polite">${state.tasbih}</div><div class="progress-track" role="progressbar" aria-label="Progres target dzikir" aria-valuemin="0" aria-valuemax="${state.target}" aria-valuenow="${Math.min(state.target,state.tasbih)}"><div id="tasbihProgress" style="width:${Math.min(100,state.tasbih/state.target*100)}%"></div></div><p class="muted">Target: ${state.target} hitungan</p><button class="tasbih-button" id="countBtn" aria-label="Tambah hitungan dzikir">${selected[0]}<br><small>${selected[1].toUpperCase()} • KETUK UNTUK BERDZIKIR</small></button><div class="tasbih-actions"><button class="outline-btn" id="resetTasbih">↺ Reset</button><button class="outline-btn" id="targetBtn">Target: ${state.target}</button></div></div><div class="panel dhikr-list"><span class="eyebrow">PILIHAN DZIKIR</span><h3>Dzikir sederhana</h3>${dhikrChoices.map(([a,b])=>`<button class="dhikr-choice${state.dhikr===b?" chosen":""}" data-dhikr="${b}" aria-pressed="${state.dhikr===b}"><b>${a}</b><small>${b}</small></button>`).join("")}<p class="note">Hitungan dan pilihan dzikir tersimpan otomatis di perangkat ini.</p></div></div>`;
+}
+function practiceView(){
+ const quiz=state.quiz, recording=state.recording;
+ const question=quiz.question;
+ const feedback=quiz.answered
+  ? `<div class="quiz-feedback ${quiz.selected===question.surah.number?"correct":"incorrect"}" role="status">${quiz.selected===question.surah.number?"Benar, alhamdulillah!":"Belum tepat."} Jawabannya: ${esc(question.surah.englishName)} (${esc(question.surah.name)}), ayat ${question.ayahNumber}.</div><p class="arabic quiz-verse" lang="ar" dir="rtl">${esc(question.arabic)}</p><p class="translation">${esc(question.translation)}</p>`
+  : question ? `<div class="quiz-clue"><span class="eyebrow">PETUNJUK AYAT</span><p>${esc(question.translation)}</p></div>` : "";
+ const choices=question
+  ? `<div class="quiz-choices">${quiz.choices.map(surah=>`<button class="quiz-choice${quiz.answered&&surah.number===question.surah.number?" correct":""}${quiz.answered&&surah.number===quiz.selected&&surah.number!==question.surah.number?" incorrect":""}" data-quiz-answer="${surah.number}" ${quiz.answered?"disabled":""}><span>${esc(surah.englishNameTranslation)}</span><b>${esc(surah.englishName)}</b><small>${esc(surah.name)}</small></button>`).join("")}</div>`
+  : "";
+ const recordingExtension=recording.urlMime.includes("mp4")?"mp4":recording.urlMime.includes("ogg")?"ogg":"webm";
+ return `<div class="section-head practice-heading"><div><span class="eyebrow">BELAJAR SAMBIL MURAJAAH</span><h3>Latihan Al-Qur’an</h3></div></div><div class="practice-grid"><section class="panel quiz-panel"><div class="practice-card-heading"><div><span class="eyebrow">TEBAK NAMA SURAH</span><h3>Ayat ini dari surah apa?</h3></div><span class="practice-icon">۞</span></div><p class="muted">Baca terjemahannya, lalu pilih nama surah yang tepat.</p><div class="quiz-score"><span>Skor sesi <b>${quiz.score}</b></span><span>Skor terbaik <b>${quiz.best}</b></span></div>${quiz.loading?`<div class="loading" role="status">Menyiapkan ayat…</div>`:quiz.error?`<div class="empty-state" role="alert">${esc(quiz.error)}</div><button class="primary-btn" id="nextQuiz">Coba lagi →</button>`:question?`${feedback}${choices}<button class="primary-btn" id="nextQuiz">${quiz.answered?"Ayat berikutnya →":"Lewati ayat →"}</button>`:`<button class="primary-btn" id="nextQuiz">Mulai tebak ayat →</button>`}</section><section class="panel recorder-panel"><div class="practice-card-heading"><div><span class="eyebrow">MURAJAAH MANDIRI</span><h3>Rekam bacaanmu</h3></div><span class="practice-icon">◉</span></div><p class="muted">Latih bacaan, dengarkan kembali, lalu simpan rekaman jika ingin.</p><div class="recording-clock" id="recordingTime">${formatRecordingTime(recording.seconds)}</div><p class="recording-status" id="recordingStatus" role="status">${esc(recording.status)}</p><div class="recording-controls">${recording.recorder?.state==="recording"?`<button class="record-btn is-recording" id="stopRecording"><span>■</span> Hentikan rekaman</button>`:`<button class="record-btn" id="startRecording"><span>●</span> Mulai rekam</button>`}</div>${recording.url?`<div class="recording-playback"><audio controls preload="metadata" src="${recording.url}">Browser tidak mendukung pemutar audio.</audio><a class="outline-btn" href="${recording.url}" download="murajaah-${new Date().toISOString().slice(0,10)}.${recordingExtension}">Unduh rekaman</a></div>`:""}<p class="note">Mikrofon hanya aktif setelah Anda menekan tombol rekam dan menyetujui izin browser. Audio tidak dikirim atau diunggah; rekaman hanya tersedia selama halaman ini terbuka.</p></section></div>`;
+}
+function formatRecordingTime(seconds){
+ return `${String(Math.floor(seconds/60)).padStart(2,"0")}:${String(seconds%60).padStart(2,"0")}`;
 }
 function bookmarkView(){
  if(!state.bookmarks.length)return `<div class="empty-state"><span>♡</span><h3>Belum ada ayat tersimpan</h3><p>Simpan ayat saat membaca Al-Qur’an untuk menemukannya kembali di sini.</p><button class="primary-btn" data-go="quran">Jelajahi Al-Qur’an</button></div>`;
@@ -105,17 +153,143 @@ function ayahCard(a, saved=false){
 function bindView(){
  $$("[data-go]").forEach(b=>b.onclick=()=>navigate(b.dataset.go));
  if(state.activeTab==="quran"){loadSurahs();$("#surahSearch").oninput=e=>renderSurahList(e.target.value);}
- if(state.activeTab==="prayer")$("#refreshLocation").onclick=loadLocation;
+ if(state.activeTab==="prayer")$("#refreshLocation").onclick=()=>loadLocation(true);
  if(state.activeTab==="tasbih"){
-  $("#countBtn").onclick=()=>{state.tasbih++;localStorage.setItem("nq-tasbih",state.tasbih);$("#tasbihCount").textContent=state.tasbih;$("#tasbihProgress").style.width=Math.min(100,state.tasbih/state.target*100)+"%";};
+  $("#countBtn").onclick=()=>{state.tasbih++;localStorage.setItem("nq-tasbih",state.tasbih);$("#tasbihCount").textContent=state.tasbih;$("#tasbihProgress").style.width=Math.min(100,state.tasbih/state.target*100)+"%";$(".progress-track").setAttribute("aria-valuenow",Math.min(state.target,state.tasbih));};
   $("#resetTasbih").onclick=()=>{state.tasbih=0;localStorage.setItem("nq-tasbih",0);renderView();};
-  $("#targetBtn").onclick=()=>{const n=prompt("Masukkan target dzikir:",state.target);if(n&&Number(n)>0){state.target=Number(n);localStorage.setItem("nq-target",state.target);renderView();}};
-  $$("[data-dhikr]").forEach(b=>b.onclick=()=>{ $$(".dhikr-choice").forEach(x=>x.classList.remove("chosen"));b.classList.add("chosen");});
+  $("#targetBtn").onclick=()=>{const n=Number(prompt("Masukkan target dzikir:",state.target));if(Number.isSafeInteger(n)&&n>0){state.target=n;localStorage.setItem("nq-target",state.target);renderView();}};
+  $$("[data-dhikr]").forEach(b=>b.onclick=()=>{state.dhikr=b.dataset.dhikr;localStorage.setItem("nq-dhikr",state.dhikr);renderView();});
+ }
+ if(state.activeTab==="practice"){
+  $("#nextQuiz").onclick=()=>loadQuizQuestion();
+  $$("[data-quiz-answer]").forEach(b=>b.onclick=()=>answerQuiz(Number(b.dataset.quizAnswer)));
+  $("#startRecording")?.addEventListener("click",startRecording);
+  $("#stopRecording")?.addEventListener("click",()=>stopRecording("Rekaman selesai."));
  }
  if(state.activeTab==="qibla")$("#qiblaLocate").onclick=loadQibla;
  $$("[data-save]").forEach(b=>b.onclick=()=>toggleBookmark(b.dataset.save));
  $$("[data-play]").forEach(b=>b.onclick=()=>playAudio(decodeURIComponent(b.dataset.play)));
  $$("[data-copy]").forEach(b=>b.onclick=()=>navigator.clipboard?.writeText(decodeURIComponent(b.dataset.copy)));
+}
+async function ensureSurahsLoaded(){
+ if(state.surahs.length)return state.surahs;
+ if(!state.surahsLoading){
+  state.surahsLoading=(async()=>{
+   const response=await fetch("https://api.alquran.cloud/v1/surah");
+   if(!response.ok)throw Error(`Gagal mengambil daftar surah (${response.status})`);
+   const result=await response.json();
+   if(!Array.isArray(result.data)||result.data.length!==114)throw Error("Daftar surah tidak lengkap.");
+   state.surahs=result.data;
+   return state.surahs;
+  })().finally(()=>{state.surahsLoading=null;});
+ }
+ return state.surahsLoading;
+}
+async function loadQuizQuestion(){
+ const quiz=state.quiz;
+ quiz.loading=true;quiz.error="";quiz.question=null;quiz.choices=[];quiz.answered=false;quiz.selected=null;
+ if(state.activeTab==="practice")renderView();
+ try{
+  const surahs=await ensureSurahsLoaded();
+  const totalAyahs=surahs.reduce((total,surah)=>total+surah.numberOfAyahs,0);
+  const ayahNumber=Math.floor(Math.random()*totalAyahs)+1;
+  const response=await fetch(`https://api.alquran.cloud/v1/ayah/${ayahNumber}/editions/quran-uthmani,id.indonesian`);
+  if(!response.ok)throw Error(`Gagal mengambil ayat (${response.status})`);
+  const result=await response.json();
+  const arabic=result.data?.find(item=>item.edition?.identifier==="quran-uthmani");
+  const translation=result.data?.find(item=>item.edition?.identifier==="id.indonesian");
+  const surah=arabic?.surah;
+  if(!arabic?.text||!translation?.text||!surah?.number)throw Error("Data ayat tidak lengkap.");
+  const distractors=surahs.filter(item=>item.number!==surah.number).sort(()=>Math.random()-.5).slice(0,3);
+  quiz.question={arabic:arabic.text,translation:translation.text,ayahNumber:arabic.numberInSurah,surah};
+  quiz.choices=[surahs.find(item=>item.number===surah.number),...distractors].sort(()=>Math.random()-.5);
+ }catch(error){
+  console.error("Gagal memuat soal tebak ayat:",error);
+  quiz.error="Soal belum bisa dimuat. Periksa koneksi internet, lalu coba lagi.";
+ }finally{
+  quiz.loading=false;
+  if(state.activeTab==="practice")renderView();
+ }
+}
+function answerQuiz(surahNumber){
+ const quiz=state.quiz;
+ if(!quiz.question||quiz.answered)return;
+ quiz.answered=true;quiz.selected=surahNumber;
+ if(surahNumber===quiz.question.surah.number){
+  quiz.score++;
+  if(quiz.score>quiz.best){
+   quiz.best=quiz.score;
+   localStorage.setItem(quizBestKey,String(quiz.best));
+  }
+ }
+ renderView();
+}
+async function startRecording(){
+ const recording=state.recording;
+ if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==="undefined"){
+  recording.status="Perekaman tidak didukung browser ini. Coba browser modern dengan HTTPS atau localhost.";
+  renderView();return;
+ }
+ if(!window.isSecureContext){
+  recording.status="Untuk memakai mikrofon, buka aplikasi melalui HTTPS atau localhost.";
+  renderView();return;
+ }
+ recording.status="Meminta izin mikrofon…";
+ renderView();
+ let stream;
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  if(state.activeTab!=="practice"){
+   stream.getTracks().forEach(track=>track.stop());
+   return;
+  }
+  const mimeType=typeof MediaRecorder.isTypeSupported==="function"
+   ?["audio/webm;codecs=opus","audio/webm","audio/mp4"].find(type=>MediaRecorder.isTypeSupported(type))
+   :undefined;
+  const recorder=mimeType?new MediaRecorder(stream,{mimeType}):new MediaRecorder(stream);
+  if(recording.url)URL.revokeObjectURL(recording.url);
+  recording.url=null;recording.urlMime="";recording.seconds=0;recording.chunks=[];recording.stream=stream;recording.recorder=recorder;
+  recorder.ondataavailable=event=>{if(event.data.size)recording.chunks.push(event.data);};
+  recorder.onerror=()=>{recording.status="Terjadi masalah saat merekam. Coba lagi.";stopRecording(recording.status);};
+  recorder.onstop=()=>{
+   clearInterval(recording.timer);recording.timer=null;
+   const blob=new Blob(recording.chunks,{type:recorder.mimeType||recording.chunks[0]?.type||"audio/webm"});
+   if(blob.size){
+    recording.url=URL.createObjectURL(blob);recording.urlMime=blob.type;
+   }else{
+    recording.status="Rekaman kosong. Pastikan mikrofon berfungsi lalu coba lagi.";
+   }
+   recording.stream?.getTracks().forEach(track=>track.stop());
+   recording.stream=null;recording.recorder=null;recording.chunks=[];
+   if(state.activeTab==="practice")renderView();
+  };
+  recorder.start();
+  recording.status="Sedang merekam. Maksimal 2 menit; rekaman berhenti saat berpindah menu.";
+  recording.timer=setInterval(()=>{
+   recording.seconds++;
+   const clock=$("#recordingTime");
+   if(clock)clock.textContent=formatRecordingTime(recording.seconds);
+   if(recording.seconds>=120)stopRecording("Batas rekaman 2 menit tercapai.");
+  },1000);
+  renderView();
+ }catch(error){
+  stream?.getTracks().forEach(track=>track.stop());
+  console.error("Gagal memulai rekaman:",error);
+  recording.recorder=null;recording.stream=null;
+  recording.status=error.name==="NotAllowedError"
+   ?"Izin mikrofon ditolak. Izinkan mikrofon di pengaturan browser lalu coba lagi."
+   :error.name==="NotFoundError"
+    ?"Mikrofon tidak ditemukan. Sambungkan mikrofon lalu coba lagi."
+    :"Mikrofon gagal diakses. Periksa izin browser dan coba lagi.";
+  if(state.activeTab==="practice")renderView();
+ }
+}
+function stopRecording(status){
+ const recording=state.recording;
+ if(!recording.recorder||recording.recorder.state!=="recording")return;
+ recording.status=status;
+ clearInterval(recording.timer);recording.timer=null;
+ recording.recorder.stop();
 }
 async function loadSurahs(){
  if(state.surahs.length){renderSurahList($("#surahSearch")?.value||"");return;}
@@ -155,19 +329,22 @@ function nextPrayer(){
  for(const [name,t] of names){if(t){const [h,m]=t.split(":").map(Number);const d=new Date();d.setHours(h,m,0,0);if(d>now)return{name,time:t};}}
  return {name:"Subuh",time:p.Fajr};
 }
-async function loadLocation(){
- if(!navigator.geolocation){alert("Browser tidak mendukung lokasi.");return;}
+async function loadLocation(showError=false){
+ if(!navigator.geolocation){$("#locationChip").textContent="⌖ Lokasi tidak didukung";if(showError)alert("Browser tidak mendukung lokasi.");return;}
  $("#locationChip").textContent="⌖ Mengambil lokasi…";
  navigator.geolocation.getCurrentPosition(async pos=>{
   state.coords={lat:pos.coords.latitude,lon:pos.coords.longitude};
   try{
-   const [r,geo]=await Promise.all([fetch(`https://api.aladhan.com/v1/timings?latitude=${state.coords.lat}&longitude=${state.coords.lon}&method=20`),fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${state.coords.lat}&lon=${state.coords.lon}`).catch(()=>null)]);
-   const j=await r.json();state.prayer=j.data.timings;
+   const now=new Date(),date=`${String(now.getDate()).padStart(2,"0")}-${String(now.getMonth()+1).padStart(2,"0")}-${now.getFullYear()}`;
+   const [r,geo]=await Promise.all([fetch(`https://api.aladhan.com/v1/timings/${date}?latitude=${state.coords.lat}&longitude=${state.coords.lon}&method=20`),fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${state.coords.lat}&lon=${state.coords.lon}`).catch(()=>null)]);
+   if(!r.ok)throw Error(`Prayer-time service returned ${r.status}`);
+   const j=await r.json();if(j.code!==200||!j.data?.timings)throw Error("Prayer-time service returned invalid data");
+   state.prayer=j.data.timings;
    if(geo?.ok){const g=await geo.json();state.locationName=[g.address?.city||g.address?.town||g.address?.village,g.address?.state].filter(Boolean).join(", ")||"Lokasi saya";}
    else state.locationName="Lokasi saya";
    $("#locationChip").textContent="⌖ "+state.locationName;renderView();
-  }catch(e){$("#locationChip").textContent="⌖ Gagal memuat";alert("Jadwal salat gagal dimuat. Periksa koneksi internet.");}
- },err=>{$("#locationChip").textContent="⌖ Izin lokasi diperlukan";alert("Izinkan akses lokasi di browser agar jadwal salat sesuai tempatmu.");},{enableHighAccuracy:true,timeout:15000});
+  }catch(e){console.error("Gagal memuat jadwal salat:",e);$("#locationChip").textContent="⌖ Gagal memuat jadwal";if(showError)alert("Jadwal salat gagal dimuat. Periksa koneksi internet.");}
+ },err=>{$("#locationChip").textContent="⌖ Izin lokasi diperlukan";if(showError)alert("Izinkan akses lokasi di browser agar jadwal salat sesuai tempatmu.");},{enableHighAccuracy:true,timeout:15000});
 }
 function qiblaBearing(lat,lon){
  const kLat=21.422487*Math.PI/180,kLon=39.826206*Math.PI/180, pLat=lat*Math.PI/180,pLon=lon*Math.PI/180;
